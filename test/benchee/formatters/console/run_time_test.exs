@@ -7,12 +7,14 @@ defmodule Benchee.Formatters.Console.RunTimeTest do
   @console_config %{
     comparison: true,
     unit_scaling: :best,
-    extended_statistics: false
+    extended_statistics: false,
+    use_accumulator: false
   }
   @console_config_extended_params %{
     comparison: true,
     unit_scaling: :best,
-    extended_statistics: true
+    extended_statistics: true,
+    use_accumulator: false
   }
 
   describe ".format_scenarios" do
@@ -259,7 +261,8 @@ defmodule Benchee.Formatters.Console.RunTimeTest do
           RunTime.format_scenarios(scenarios, %{
             comparison: false,
             unit_scaling: :best,
-            extended_statistics: false
+            extended_statistics: false,
+            use_accumulator: false
           })
         )
 

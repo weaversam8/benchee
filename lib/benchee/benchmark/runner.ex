@@ -139,7 +139,6 @@ defmodule Benchee.Benchmark.Runner do
 
   defp add_acc_measurements_to_scenario(measurements, scenario) do
     # TODO: add parallel merging logic here
-    IO.inspect(measurements)
     [{run_times, [], []}] = measurements
     memory_usages = %Accumulator{}
     reductions = %Accumulator{}

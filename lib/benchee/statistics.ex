@@ -6,6 +6,7 @@ defmodule Benchee.Statistics do
   See `statistics/1` for a breakdown of the included statistics.
   """
 
+  alias Benchee.Statistics.Accumulator
   alias Benchee.{CollectionData, Conversion.Duration, Scenario, Suite}
   alias Benchee.Output.ProgressPrinter
 
@@ -167,15 +168,17 @@ defmodule Benchee.Statistics do
     printer.calculating_statistics(suite.configuration)
 
     percentiles = suite.configuration.percentiles
+    use_accumulator = suite.configuration.use_accumulator
 
     update_in(suite.scenarios, fn scenarios ->
-      scenario_statistics = compute_statistics_in_parallel(scenarios, percentiles)
+      scenario_statistics =
+        compute_statistics_in_parallel(scenarios, percentiles, use_accumulator)
 
       update_scenarios_with_statistics(scenarios, scenario_statistics)
     end)
   end
 
-  defp compute_statistics_in_parallel(scenarios, percentiles) do
+  defp compute_statistics_in_parallel(scenarios, percentiles, use_accumulator) do
     scenarios
     |> Enum.map(fn scenario ->
       # we filter down the data here to avoid sending the input and benchmarking function to
@@ -188,7 +191,7 @@ defmodule Benchee.Statistics do
     # async_stream as we might run a ton of scenarios depending on the benchmark
     |> Task.async_stream(
       fn scenario_collection_data ->
-        calculate_scenario_statistics(scenario_collection_data, percentiles)
+        calculate_scenario_statistics(scenario_collection_data, percentiles, use_accumulator)
       end,
       timeout: :infinity,
       ordered: true
@@ -219,25 +222,72 @@ defmodule Benchee.Statistics do
     end)
   end
 
-  defp calculate_scenario_statistics({run_time_data, memory_data, reductions_data}, percentiles) do
+  defp calculate_scenario_statistics(
+         {run_time_data, memory_data, reductions_data},
+         percentiles,
+         use_accumulator
+       ) do
     run_time_stats =
       run_time_data.samples
-      |> calculate_statistics(percentiles)
+      |> calculate_statistics(percentiles, use_accumulator, run_time_data.accumulator)
       |> add_ips
 
-    memory_stats = calculate_statistics(memory_data.samples, percentiles)
-    reductions_stats = calculate_statistics(reductions_data.samples, percentiles)
+    memory_stats =
+      calculate_statistics(
+        memory_data.samples,
+        percentiles,
+        use_accumulator,
+        memory_data.accumulator
+      )
+
+    reductions_stats =
+      calculate_statistics(
+        reductions_data.samples,
+        percentiles,
+        use_accumulator,
+        reductions_data.accumulator
+      )
 
     {run_time_stats, memory_stats, reductions_stats}
   end
 
-  defp calculate_statistics([], _) do
+  @spec calculate_statistics(list, list, boolean, Statistics.Accumulator) :: t()
+  defp calculate_statistics([], _, false, _) do
     %__MODULE__{
       sample_size: 0
     }
   end
 
-  defp calculate_statistics(samples, percentiles) do
+  defp calculate_statistics([], _, true, %Accumulator{sample_size: 0}) do
+    %__MODULE__{
+      sample_size: 0
+    }
+  end
+
+  defp calculate_statistics([], _, true, accumulator) do
+    variance =
+      Statistex.variance(:ignored, sample_size: accumulator.sample_size, m2: accumulator.m2)
+
+    average =
+      Statistex.average(:ignored, sample_size: accumulator.sample_size, total: accumulator.total)
+
+    std_dev = Statistex.standard_deviation(:ignored, variance: variance)
+
+    %__MODULE__{
+      sample_size: accumulator.sample_size,
+      average: average,
+      std_dev: std_dev,
+      std_dev_ratio:
+        Statistex.standard_deviation_ratio(:ignored,
+          average: average,
+          standard_deviation: std_dev
+        ),
+      minimum: accumulator.minimum,
+      maximum: accumulator.maximum
+    }
+  end
+
+  defp calculate_statistics(samples, percentiles, false, _) do
     samples
     |> Statistex.statistics(percentiles: percentiles)
     |> convert_from_statistex

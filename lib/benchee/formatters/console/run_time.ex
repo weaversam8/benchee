@@ -35,7 +35,7 @@ defmodule Benchee.Formatters.Console.RunTime do
 
   ```
   iex> memory_statistics = %Benchee.Statistics{average: 100.0}
-  ...> 
+  ...>
   ...> scenarios = [
   ...>   %Benchee.Scenario{
   ...>     name: "My Job",
@@ -72,8 +72,8 @@ defmodule Benchee.Formatters.Console.RunTime do
   ...>     memory_usage_data: %Benchee.CollectionData{statistics: memory_statistics}
   ...>   }
   ...> ]
-  ...> 
-  ...> configuration = %{comparison: false, unit_scaling: :best, extended_statistics: true}
+  ...>
+  ...> configuration = %{comparison: false, unit_scaling: :best, extended_statistics: true, use_accumulator: false}
   ...> format_scenarios(scenarios, configuration)
   [
     "\nName             ips        average  deviation         median         99th %\n",
@@ -109,8 +109,8 @@ defmodule Benchee.Formatters.Console.RunTime do
     label_width = Helpers.label_width(scenarios)
 
     List.flatten([
-      column_descriptors(label_width),
-      scenario_reports(scenarios, units, label_width),
+      column_descriptors(label_width, config),
+      scenario_reports(scenarios, units, label_width, config),
       comparison_report(scenarios, units, label_width, config),
       extended_statistics_report(scenarios, units, label_width, config)
     ])
@@ -186,8 +186,8 @@ defmodule Benchee.Formatters.Console.RunTime do
     |> to_string
   end
 
-  @spec column_descriptors(integer) :: String.t()
-  defp column_descriptors(label_width) do
+  @spec column_descriptors(integer, map) :: String.t()
+  defp column_descriptors(label_width, %{use_accumulator: false}) do
     "\n~*s~*s~*s~*s~*s~*s\n"
     |> :io_lib.format([
       -label_width,
@@ -206,15 +206,32 @@ defmodule Benchee.Formatters.Console.RunTime do
     |> to_string
   end
 
-  @spec scenario_reports([Scenario.t()], unit_per_statistic, integer) :: [String.t()]
-  defp scenario_reports(scenarios, units, label_width) do
+  defp column_descriptors(label_width, %{use_accumulator: true}) do
+    "\n~*s~*s~*s~*s\n"
+    |> :io_lib.format([
+      -label_width,
+      "Name",
+      @ips_width,
+      "ips",
+      @average_width,
+      "average",
+      @deviation_width,
+      "deviation"
+    ])
+    |> to_string
+  end
+
+  @spec scenario_reports([Scenario.t()], unit_per_statistic, integer, map) :: [String.t()]
+  defp scenario_reports(scenarios, units, label_width, config) do
     Enum.map(scenarios, fn scenario ->
-      format_scenario(scenario, units, label_width)
+      format_scenario(scenario, units, label_width, config)
     end)
   end
 
-  @spec format_scenario(Scenario.t(), unit_per_statistic, integer) :: String.t()
-  defp format_scenario(scenario, %{run_time: run_time_unit, ips: ips_unit}, label_width) do
+  @spec format_scenario(Scenario.t(), unit_per_statistic, integer, map) :: String.t()
+  defp format_scenario(scenario, %{run_time: run_time_unit, ips: ips_unit}, label_width, %{
+         use_accumulator: false
+       }) do
     %Scenario{
       name: name,
       run_time_data: %{
@@ -242,6 +259,34 @@ defmodule Benchee.Formatters.Console.RunTime do
       duration_output(median, run_time_unit),
       @percentile_width,
       duration_output(percentile_99, run_time_unit)
+    ])
+    |> to_string
+  end
+
+  defp format_scenario(scenario, %{run_time: run_time_unit, ips: ips_unit}, label_width, %{
+         use_accumulator: true
+       }) do
+    %Scenario{
+      name: name,
+      run_time_data: %{
+        statistics: %Statistics{
+          average: average,
+          ips: ips,
+          std_dev_ratio: std_dev_ratio
+        }
+      }
+    } = scenario
+
+    "~*s~*ts~*ts~*ts\n"
+    |> :io_lib.format([
+      -label_width,
+      name,
+      @ips_width,
+      Helpers.count_output(ips, ips_unit),
+      @average_width,
+      duration_output(average, run_time_unit),
+      @deviation_width,
+      Helpers.deviation_output(std_dev_ratio)
     ])
     |> to_string
   end
