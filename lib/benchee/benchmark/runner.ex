@@ -131,7 +131,10 @@ defmodule Benchee.Benchmark.Runner do
   end
 
   @spec measure_scenario(Scenario.t(), ScenarioContext.t()) :: {[number], [number], [number]}
-  defp measure_scenario(scenario, scenario_context) do
+  defp measure_scenario(
+         scenario,
+         scenario_context = %ScenarioContext{config: %BenchmarkConfig{use_accumulator: false}}
+       ) do
     scenario_input = Hooks.run_before_scenario(scenario, scenario_context)
     scenario_context = %ScenarioContext{scenario_context | scenario_input: scenario_input}
 
@@ -166,7 +169,7 @@ defmodule Benchee.Benchmark.Runner do
   defp run_runtime_benchmark(
          scenario,
          scenario_context = %ScenarioContext{
-           config: %{
+           config: %BenchmarkConfig{
              time: run_time,
              print: %{fast_warning: fast_warning}
            }
@@ -204,7 +207,9 @@ defmodule Benchee.Benchmark.Runner do
     Enum.map(reductions, &(&1 - offset))
   end
 
-  defp run_reductions_benchmark(_, %ScenarioContext{config: %{reduction_time: time}})
+  defp run_reductions_benchmark(_, %ScenarioContext{
+         config: %BenchmarkConfig{reduction_time: time}
+       })
        when time in @zero_values do
     []
   end
@@ -212,7 +217,7 @@ defmodule Benchee.Benchmark.Runner do
   defp run_reductions_benchmark(
          scenario,
          scenario_context = %ScenarioContext{
-           config: %{
+           config: %BenchmarkConfig{
              reduction_time: reduction_time
            }
          }
@@ -228,7 +233,7 @@ defmodule Benchee.Benchmark.Runner do
     do_benchmark(scenario, new_context, Collect.Reductions, [])
   end
 
-  defp run_memory_benchmark(_, %ScenarioContext{config: %{memory_time: time}})
+  defp run_memory_benchmark(_, %ScenarioContext{config: %BenchmarkConfig{memory_time: time}})
        when time in @zero_values do
     []
   end
@@ -236,7 +241,7 @@ defmodule Benchee.Benchmark.Runner do
   defp run_memory_benchmark(
          scenario,
          scenario_context = %ScenarioContext{
-           config: %{
+           config: %BenchmarkConfig{
              memory_time: memory_time
            }
          }

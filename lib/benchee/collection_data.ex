@@ -7,7 +7,7 @@ defmodule Benchee.CollectionData do
 
   alias Benchee.Statistics
 
-  defstruct statistics: %Statistics{}, samples: []
+  defstruct statistics: %Statistics{}, samples: [], accumulator: %Statistics.Accumulator{}
 
   @typedoc """
   Samples and statistics.
@@ -16,6 +16,7 @@ defmodule Benchee.CollectionData do
   """
   @type t :: %__MODULE__{
           samples: [float | non_neg_integer],
-          statistics: Statistics.t()
+          statistics: Statistics.t(),
+          accumulator: Statistics.Accumulator.t()
         }
 end

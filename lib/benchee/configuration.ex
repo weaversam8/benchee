@@ -40,6 +40,7 @@ defmodule Benchee.Configuration do
             measure_function_call_overhead: false,
             title: nil,
             profile_after: false,
+            use_accumulator: false,
             # Why a million? Well, it's a nice number :P
             # Seriously, though: That's usually enough samples to be significant enough as a
             # result.
