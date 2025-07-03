@@ -44,7 +44,8 @@ defmodule Benchee.Mixfile do
   defp deps do
     deps = [
       {:deep_merge, "~> 1.0"},
-      {:statistex, "~> 1.0"},
+      {:statistex, git: "https://github.com/weaversam8/statistex", branch: "feature/m2"},
+      {:stream_data, "~> 1.1", only: :test},
       {:ex_guard, "~> 1.3", only: :dev},
       {:credo, "~> 1.7.7-rc.0", only: :dev, runtime: false},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
