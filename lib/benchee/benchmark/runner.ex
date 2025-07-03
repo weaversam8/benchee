@@ -6,6 +6,7 @@ defmodule Benchee.Benchmark.Runner do
   # This module actually runs our benchmark scenarios, adding information about
   # run time and memory usage to each scenario.
 
+  alias Benchee.Statistics.Accumulator
   alias Benchee.Benchmark.BenchmarkConfig
   alias Benchee.{Benchmark, Scenario, Utility.Parallel}
 
@@ -108,9 +109,15 @@ defmodule Benchee.Benchmark.Runner do
        ) do
     printer.benchmarking(job_name, input_name, config)
 
+    add_measurements_fn =
+      case scenario_context.config.use_accumulator do
+        false -> &add_measurements_to_scenario/2
+        true -> &add_acc_measurements_to_scenario/2
+      end
+
     config
     |> measure_scenario_parallel(scenario, scenario_context)
-    |> add_measurements_to_scenario(scenario)
+    |> then(&add_measurements_fn.(&1, scenario))
   end
 
   defp measure_scenario_parallel(config, scenario, scenario_context) do
@@ -130,11 +137,23 @@ defmodule Benchee.Benchmark.Runner do
     }
   end
 
+  defp add_acc_measurements_to_scenario(measurements, scenario) do
+    # TODO: add parallel merging logic here
+    IO.inspect(measurements)
+    [{run_times, [], []}] = measurements
+    memory_usages = %Accumulator{}
+    reductions = %Accumulator{}
+
+    %{
+      scenario
+      | run_time_data: %{scenario.run_time_data | accumulator: run_times},
+        memory_usage_data: %{scenario.memory_usage_data | accumulator: memory_usages},
+        reductions_data: %{scenario.reductions_data | accumulator: reductions}
+    }
+  end
+
   @spec measure_scenario(Scenario.t(), ScenarioContext.t()) :: {[number], [number], [number]}
-  defp measure_scenario(
-         scenario,
-         scenario_context = %ScenarioContext{config: %BenchmarkConfig{use_accumulator: false}}
-       ) do
+  defp measure_scenario(scenario, scenario_context) do
     scenario_input = Hooks.run_before_scenario(scenario, scenario_context)
     scenario_context = %ScenarioContext{scenario_context | scenario_input: scenario_input}
 
@@ -230,7 +249,13 @@ defmodule Benchee.Benchmark.Runner do
         end_time: end_time
     }
 
-    do_benchmark(scenario, new_context, Collect.Reductions, [])
+    measurements =
+      case new_context.config.use_accumulator do
+        false -> []
+        true -> scenario.reductions_data.accumulator
+      end
+
+    do_benchmark(scenario, new_context, Collect.Reductions, measurements)
   end
 
   defp run_memory_benchmark(_, %ScenarioContext{config: %BenchmarkConfig{memory_time: time}})
@@ -254,7 +279,13 @@ defmodule Benchee.Benchmark.Runner do
         end_time: end_time
     }
 
-    do_benchmark(scenario, new_context, Collect.Memory, [])
+    measurements =
+      case new_context.config.use_accumulator do
+        false -> []
+        true -> scenario.memory_usage_data.accumulator
+      end
+
+    do_benchmark(scenario, new_context, Collect.Memory, measurements)
   end
 
   @spec measure_runtimes(Scenario.t(), ScenarioContext.t(), number, boolean) :: [number]
@@ -277,7 +308,13 @@ defmodule Benchee.Benchmark.Runner do
         sample_size: 1
     }
 
-    do_benchmark(scenario, new_context, Collect.Time, [initial_run_time])
+    measurements =
+      case new_context.config.use_accumulator do
+        false -> [initial_run_time]
+        true -> scenario.run_time_data.accumulator
+      end
+
+    do_benchmark(scenario, new_context, Collect.Time, measurements)
   end
 
   defp current_time, do: :erlang.system_time(:nano_seconds)
@@ -294,7 +331,8 @@ defmodule Benchee.Benchmark.Runner do
            end_time: end_time,
            sample_size: sample_size,
            config: %BenchmarkConfig{
-             max_sample_size: max_sample_size
+             max_sample_size: max_sample_size,
+             use_accumulator: false
            }
          },
          _collector,
@@ -305,6 +343,27 @@ defmodule Benchee.Benchmark.Runner do
               measurements != [] do
     # restore correct order - important for graphing
     Enum.reverse(measurements)
+  end
+
+  defp do_benchmark(
+         _scenario,
+         %ScenarioContext{
+           current_time: current_time,
+           end_time: end_time,
+           sample_size: sample_size,
+           config: %BenchmarkConfig{
+             max_sample_size: max_sample_size,
+             use_accumulator: true
+           }
+         },
+         _collector,
+         measurements
+       )
+       when (current_time > end_time or
+               (not is_nil(max_sample_size) and sample_size >= max_sample_size)) and
+              measurements != [] do
+    # no need to reverse since it's an accumulator
+    measurements
   end
 
   defp do_benchmark(scenario, scenario_context, collector, measurements) do
@@ -327,7 +386,26 @@ defmodule Benchee.Benchmark.Runner do
   # We return `nil` if memory measurement failed so keep it empty
   @spec updated_measurements(number | nil, [number]) :: [number]
   defp updated_measurements(nil, measurements), do: measurements
-  defp updated_measurements(measurement, measurements), do: [measurement | measurements]
+
+  defp updated_measurements(measurement, measurements) when is_list(measurements),
+    do: [measurement | measurements]
+
+  # TODO: implement
+  defp updated_measurements(measurement, %Accumulator{
+         sample_size: sample_size,
+         total: total,
+         m2: m2,
+         minimum: minimum,
+         maximum: maximum
+       }) do
+    %Accumulator{
+      sample_size: sample_size + 1,
+      total: total + measurement,
+      minimum: min(minimum, measurement),
+      maximum: max(maximum, measurement),
+      m2: Statistex.m2(measurement, sample_size: sample_size, m2: m2, total: total)
+    }
+  end
 
   # Support functionality that just runs once via `run_once` and does not care about measurements.
   # At the time of this writing that's pre checks and profilers.
