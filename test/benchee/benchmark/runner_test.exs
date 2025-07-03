@@ -67,6 +67,26 @@ defmodule Benchee.Benchmark.RunnerTest do
     end
 
     @tag :performance
+    test "runs a benchmark suite with an accumulator" do
+      retrying(fn ->
+        suite =
+          test_suite(%Suite{
+            configuration: %{time: 60_000_000, warmup: 10_000_000, use_accumulator: true}
+          })
+
+        new_suite =
+          suite
+          |> Benchmark.benchmark("Name", fn -> :timer.sleep(10) end)
+          |> Benchmark.collect(FakeBenchmarkPrinter)
+
+        assert new_suite.configuration == suite.configuration
+
+        # should be 6 but gotta give it a bit leeway
+        assert Enum.at(new_suite.scenarios, 0).run_time_data.accumulator.sample_size >= 5
+      end)
+    end
+
+    @tag :performance
     test "runs a suite with multiple jobs and gathers results" do
       retrying(fn ->
         suite = test_suite(%Suite{configuration: %{time: 100_000_000, warmup: 10_000_000}})
